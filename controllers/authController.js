@@ -1,11 +1,13 @@
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
+const conexion = require("../config/database");
 
-const usuarios = [];
 
+// REGISTRO DE USUARIO
 exports.register = async (req, res) => {
 
     const { nombre, correo, password } = req.body;
+
 
     if (!nombre || !correo || !password) {
         return res.status(400).json({
@@ -13,70 +15,102 @@ exports.register = async (req, res) => {
         });
     }
 
-    const existe = usuarios.find(u => u.correo === correo);
-
-    if (existe) {
-        return res.status(400).json({
-            mensaje: "El usuario ya existe"
-        });
-    }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    usuarios.push({
-        nombre,
-        correo,
-        password: passwordHash,
-        rol: "usuario"
-    });
 
-    res.status(201).json({
-        mensaje: "Usuario registrado correctamente"
-    });
+    const sql = `
+        INSERT INTO usuarios
+        (nombre, correo, password, rol)
+        VALUES (?, ?, ?, ?)
+    `;
+
+
+    conexion.query(
+        sql,
+        [nombre, correo, passwordHash, "usuario"],
+        (error, resultado) => {
+
+            if (error) {
+                return res.status(500).json(error);
+            }
+
+
+            res.status(201).json({
+                mensaje: "Usuario registrado correctamente",
+                id: resultado.insertId
+            });
+
+        }
+    );
 
 };
 
+
+
+// LOGIN DE USUARIO
 exports.login = async (req, res) => {
 
     const { correo, password } = req.body;
 
-    const usuario = usuarios.find(u => u.correo === correo);
 
-    if (!usuario) {
-        return res.status(401).json({
-            mensaje: "Credenciales incorrectas"
-        });
-    }
+    const sql = "SELECT * FROM usuarios WHERE correo = ?";
 
-    const valido = await bcrypt.compare(password, usuario.password);
 
-    if (!valido) {
-        return res.status(401).json({
-            mensaje: "Credenciales incorrectas"
-        });
-    }
+    conexion.query(
+        sql,
+        [correo],
+        async (error, resultados) => {
 
-    const token = jwt.sign(
+            if (error) {
+                return res.status(500).json(error);
+            }
 
-        {
-            correo: usuario.correo,
-            rol: usuario.rol
-        },
 
-        "CLAVESECRETA",
+            if (resultados.length === 0) {
+                return res.status(401).json({
+                    mensaje: "Credenciales incorrectas"
+                });
+            }
 
-        {
-            expiresIn: "1h"
+
+            const usuario = resultados[0];
+
+
+            const valido = await bcrypt.compare(
+                password,
+                usuario.password
+            );
+
+
+            if (!valido) {
+                return res.status(401).json({
+                    mensaje: "Credenciales incorrectas"
+                });
+            }
+
+
+            const token = jwt.sign(
+                {
+                    id: usuario.id,
+                    correo: usuario.correo,
+                    rol: usuario.rol
+                },
+
+                process.env.JWT_SECRET,
+
+                {
+                    expiresIn: "1h"
+                }
+            );
+
+
+            res.json({
+                mensaje: "Inicio de sesión correcto",
+                token
+            });
+
         }
-
     );
-
-    res.json({
-
-        mensaje: "Inicio de sesión correcto",
-
-        token
-
-    });
 
 };
