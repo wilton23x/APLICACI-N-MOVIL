@@ -1,23 +1,39 @@
 const conexion = require("../config/database");
 
+// ======================================
+// Obtener todas las tareas
+// ======================================
+
 exports.obtenerTareas = (req, res) => {
+
+    const sql = `
+        SELECT 
+            id,
+            titulo,
+            descripcion,
+            estado,
+            usuario_id
+        FROM tareas
+        WHERE usuario_id = ?
+        ORDER BY id DESC
+    `;
+
     const usuario_id = req.usuario.id;
 
     conexion.query(
-        `SELECT id, titulo, descripcion, estado, usuario_id
-         FROM tareas
-         WHERE usuario_id = ?
-         ORDER BY id DESC`,
+        sql,
         [usuario_id],
         (error, resultados) => {
+
             if (error) {
                 console.error("Error al obtener tareas:", error);
+
                 return res.status(500).json({
                     mensaje: "Error al obtener las tareas"
                 });
             }
 
-            res.json({
+            res.status(200).json({
                 mensaje: "Tareas obtenidas correctamente",
                 tareas: resultados
             });
@@ -25,25 +41,50 @@ exports.obtenerTareas = (req, res) => {
     );
 };
 
+
+// ======================================
+// Crear tarea
+// ======================================
+
 exports.crearTarea = (req, res) => {
-    const { titulo, descripcion } = req.body;
+
+    const {
+        titulo,
+        descripcion
+    } = req.body;
 
     if (!titulo) {
         return res.status(400).json({
-            mensaje: "El título es obligatorio"
+            mensaje: "El tÃ­tulo es obligatorio"
         });
     }
 
     const usuario_id = req.usuario.id;
 
+    const sql = `
+        INSERT INTO tareas
+        (
+            titulo,
+            descripcion,
+            estado,
+            usuario_id
+        )
+        VALUES (?, ?, ?, ?)
+    `;
+
     conexion.query(
-        `INSERT INTO tareas
-         (titulo, descripcion, estado, usuario_id)
-         VALUES (?, ?, ?, ?)`,
-        [titulo, descripcion || null, "Pendiente", usuario_id],
+        sql,
+        [
+            titulo,
+            descripcion || null,
+            "Pendiente",
+            usuario_id
+        ],
         (error, resultado) => {
+
             if (error) {
                 console.error("Error al crear tarea:", error);
+
                 return res.status(500).json({
                     mensaje: "Error al crear la tarea"
                 });
@@ -57,21 +98,41 @@ exports.crearTarea = (req, res) => {
     );
 };
 
+
+// ======================================
+// Actualizar tarea
+// ======================================
+
 exports.actualizarTarea = (req, res) => {
+
     const id = req.params.id;
-    const { titulo, descripcion, estado } = req.body;
+
+    const {
+        titulo,
+        descripcion,
+        estado
+    } = req.body;
+
     const usuario_id = req.usuario.id;
 
     if (!titulo) {
         return res.status(400).json({
-            mensaje: "El título es obligatorio"
+            mensaje: "El tÃ­tulo es obligatorio"
         });
     }
 
+    const sql = `
+        UPDATE tareas
+        SET
+            titulo = ?,
+            descripcion = ?,
+            estado = ?
+        WHERE id = ?
+        AND usuario_id = ?
+    `;
+
     conexion.query(
-        `UPDATE tareas
-         SET titulo = ?, descripcion = ?, estado = ?
-         WHERE id = ? AND usuario_id = ?`,
+        sql,
         [
             titulo,
             descripcion || null,
@@ -80,8 +141,10 @@ exports.actualizarTarea = (req, res) => {
             usuario_id
         ],
         (error, resultado) => {
+
             if (error) {
-                console.error("Error al actualizar tarea:", error);
+                console.error("Error al actualizar:", error);
+
                 return res.status(500).json({
                     mensaje: "Error al actualizar la tarea"
                 });
@@ -93,24 +156,38 @@ exports.actualizarTarea = (req, res) => {
                 });
             }
 
-            res.json({
+            res.status(200).json({
                 mensaje: "Tarea actualizada correctamente"
             });
         }
     );
 };
 
+
+// ======================================
+// Eliminar tarea
+// ======================================
+
 exports.eliminarTarea = (req, res) => {
+
     const id = req.params.id;
+
     const usuario_id = req.usuario.id;
 
+    const sql = `
+        DELETE FROM tareas
+        WHERE id = ?
+        AND usuario_id = ?
+    `;
+
     conexion.query(
-        `DELETE FROM tareas
-         WHERE id = ? AND usuario_id = ?`,
+        sql,
         [id, usuario_id],
         (error, resultado) => {
+
             if (error) {
-                console.error("Error al eliminar tarea:", error);
+                console.error("Error al eliminar:", error);
+
                 return res.status(500).json({
                     mensaje: "Error al eliminar la tarea"
                 });
@@ -122,7 +199,7 @@ exports.eliminarTarea = (req, res) => {
                 });
             }
 
-            res.json({
+            res.status(200).json({
                 mensaje: "Tarea eliminada correctamente"
             });
         }
