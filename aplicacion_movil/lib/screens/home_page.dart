@@ -6,7 +6,6 @@ import '../services/secure_storage_service.dart';
 import '../services/sync_service.dart';
 import '../services/task_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/app_button.dart';
 import '../widgets/async_state.dart';
 import '../widgets/task_card.dart';
 import 'login_page.dart';
@@ -20,152 +19,343 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TaskService _taskService = const TaskService();
+
   List<Task> _tasks = [];
+
   bool _loading = true;
   bool _fromCache = false;
+
   DateTime? _lastSyncAt;
+
   int _pendingCount = 0;
 
   @override
   void initState() {
     super.initState();
+
     _loadTasks();
   }
 
   Future<void> _loadTasks() async {
-    setState(() => _loading = true);
-    final result = await _taskService.getTasksOfflineFirst();
-    final pending = await LocalDatabase.instance.pendingCount();
     if (!mounted) return;
+
     setState(() {
-      _tasks = result.tasks;
-      _fromCache = result.fromCache;
-      _lastSyncAt = result.lastSyncAt;
-      _pendingCount = pending;
-      _loading = false;
+      _loading = true;
     });
+
+    try {
+      final result =
+          await _taskService.getTasksOfflineFirst();
+
+      final pending =
+          await LocalDatabase.instance.pendingCount();
+
+      if (!mounted) return;
+
+      setState(() {
+        _tasks = result.tasks;
+
+        _fromCache = result.fromCache;
+
+        _lastSyncAt = result.lastSyncAt;
+
+        _pendingCount = pending;
+
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+
+      setState(() {
+        _loading = false;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Error al cargar tareas: '
+            '${e.toString().replaceFirst('Exception: ', '')}',
+          ),
+        ),
+      );
+    }
   }
 
   String _ageText() {
-    if (_lastSyncAt == null) return 'sin sincronización previa';
-    final diff = DateTime.now().toUtc().difference(_lastSyncAt!.toUtc());
-    if (diff.inMinutes < 1) return 'hace menos de 1 minuto';
-    if (diff.inMinutes < 60) return 'hace ${diff.inMinutes} min';
-    if (diff.inHours < 24) return 'hace ${diff.inHours} h';
+    if (_lastSyncAt == null) {
+      return 'sin sincronización previa';
+    }
+
+    final diff = DateTime.now()
+        .toUtc()
+        .difference(
+          _lastSyncAt!.toUtc(),
+        );
+
+    if (diff.inMinutes < 1) {
+      return 'hace menos de 1 minuto';
+    }
+
+    if (diff.inMinutes < 60) {
+      return 'hace ${diff.inMinutes} min';
+    }
+
+    if (diff.inHours < 24) {
+      return 'hace ${diff.inHours} h';
+    }
+
     return 'hace ${diff.inDays} días';
   }
 
   Future<void> _saveTask({Task? task}) async {
-    final titleController = TextEditingController(text: task?.title ?? '');
-    final descriptionController = TextEditingController(text: task?.description ?? '');
+  final bool isEditing = task != null;
 
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        final isEditing = task != null;
-        return AlertDialog(
-          title: Text(isEditing ? 'Actualizar tarea' : 'Agregar tarea'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: titleController,
-                  decoration: const InputDecoration(
-                    labelText: 'Nombre de la tarea',
-                    border: OutlineInputBorder(),
-                  ),
+  String title = task?.title ?? '';
+  String description = task?.description ?? '';
+
+  final data = await showDialog<Map<String, String>>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: Text(
+          isEditing ? 'Actualizar tarea' : 'Agregar tarea',
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                initialValue: title,
+                autofocus: true,
+                decoration: const InputDecoration(
+                  labelText: 'Nombre de la tarea',
+                  border: OutlineInputBorder(),
                 ),
-                const SizedBox(height: AppSpacing.md),
-                TextField(
-                  controller: descriptionController,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Descripción',
-                    border: OutlineInputBorder(),
-                  ),
+                onChanged: (value) {
+                  title = value;
+                },
+              ),
+              const SizedBox(height: AppSpacing.md),
+              TextFormField(
+                initialValue: description,
+                maxLines: 4,
+                decoration: const InputDecoration(
+                  labelText: 'Descripción',
+                  border: OutlineInputBorder(),
                 ),
-              ],
+                onChanged: (value) {
+                  description = value;
+                },
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(dialogContext).pop();
+            },
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: () {
+              final cleanTitle = title.trim();
+              final cleanDescription = description.trim();
+
+              if (cleanTitle.isEmpty) {
+                return;
+              }
+
+              Navigator.of(dialogContext).pop({
+                'title': cleanTitle,
+                'description': cleanDescription,
+              });
+            },
+            icon: Icon(
+              isEditing ? Icons.save : Icons.add,
+            ),
+            label: Text(
+              isEditing ? 'Actualizar' : 'Guardar',
             ),
           ),
-          actions: [
-            AppButton(
-              label: 'Cancelar',
-              variant: AppButtonVariant.secondary,
-              onPressed: () => Navigator.pop(context, false),
-            ),
-            AppButton(
-              label: isEditing ? 'Actualizar' : 'Guardar',
-              icon: isEditing ? Icons.save : Icons.add,
-              onPressed: () async {
-                final title = titleController.text.trim();
-                final description = descriptionController.text.trim();
-                if (title.isEmpty) return;
-                try {
-                  if (isEditing && task.id != null) {
-                    await _taskService.updateTask(
-                      id: task.id!,
-                      title: title,
-                      description: description,
-                      status: task.status,
-                    );
-                  } else {
-                    final sent = await _taskService.createTaskOfflineFirst(
-                      title: title,
-                      description: description,
-                    );
-                    if (!context.mounted) return;
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(sent
-                            ? 'Tarea enviada al servidor'
-                            : 'Sin conexión: tarea guardada en cola pendiente'),
-                      ),
-                    );
-                  }
-                  if (context.mounted) Navigator.pop(context, true);
-                } catch (e) {
-                  if (!context.mounted) return;
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
-                  );
-                }
-              },
-            ),
-          ],
-        );
-      },
-    );
+        ],
+      );
+    },
+  );
 
-    titleController.dispose();
-    descriptionController.dispose();
-    if (result == true) await _loadTasks();
+  if (data == null || !mounted) {
+    return;
   }
 
-  Future<void> _deleteTask(Task task) async {
-    if (task.id == null) return;
-    try {
-      await _taskService.deleteTask(task.id!);
-      await _loadTasks();
-    } catch (e) {
+  final cleanTitle = data['title'] ?? '';
+  final cleanDescription = data['description'] ?? '';
+
+  try {
+    if (isEditing && task.id != null) {
+      await _taskService.updateTask(
+        id: task.id!,
+        title: cleanTitle,
+        description: cleanDescription,
+        status: task.status,
+      );
+
       if (!mounted) return;
+
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Para esta entrega, eliminar requiere conexión.')),
+        const SnackBar(
+          content: Text('Tarea actualizada correctamente'),
+        ),
+      );
+    } else {
+      final sent = await _taskService.createTaskOfflineFirst(
+        title: cleanTitle,
+        description: cleanDescription,
+      );
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            sent
+                ? 'Tarea enviada al servidor'
+                : 'Sin conexión: tarea guardada en cola pendiente',
+          ),
+        ),
+      );
+    }
+
+    if (!mounted) return;
+
+    await _loadTasks();
+  } catch (e) {
+    if (!mounted) return;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          e.toString().replaceFirst('Exception: ', ''),
+        ),
+      ),
+    );
+  }
+}
+  Future<void> _deleteTask(
+    Task task,
+  ) async {
+    if (task.id == null) {
+      return;
+    }
+
+    try {
+      await _taskService
+          .deleteTask(
+        task.id!,
+      );
+
+      await _loadTasks();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Tarea eliminada',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Para esta entrega, eliminar requiere conexión.',
+          ),
+        ),
       );
     }
   }
 
   Future<void> _syncNow() async {
-    await SyncService.instance.processPendingQueue();
-    await _loadTasks();
+    if (!mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Sincronizando...',
+        ),
+        duration:
+            Duration(seconds: 1),
+      ),
+    );
+
+    try {
+      await SyncService.instance
+          .processPendingQueue();
+
+      await _loadTasks();
+
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Sincronización finalizada',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No fue posible sincronizar en este momento',
+          ),
+        ),
+      );
+    }
   }
 
   Future<void> _logout() async {
-    await SecureStorageService.deleteToken();
-    await LocalDatabase.instance.clearAll();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      MaterialPageRoute(builder: (_) => const LoginPage()),
+    await SecureStorageService
+        .deleteToken();
+
+    await LocalDatabase.instance
+        .clearAll();
+
+    if (!mounted) {
+      return;
+    }
+
+    Navigator.of(context)
+        .pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) =>
+            const LoginPage(),
+      ),
       (_) => false,
     );
   }
@@ -174,35 +364,90 @@ class _HomePageState extends State<HomePage> {
     final text = _fromCache
         ? 'MODO SIN CONEXIÓN · Datos locales ${_ageText()}'
         : 'En línea · Última sincronización ${_ageText()}';
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 16,
+        vertical: 12,
+      ),
       child: Row(
         children: [
-          Icon(_fromCache ? Icons.cloud_off : Icons.cloud_done),
-          const SizedBox(width: 8),
-          Expanded(child: Text(text)),
-          if (_pendingCount > 0) Text('Pendientes: $_pendingCount'),
+          Icon(
+            _fromCache
+                ? Icons.cloud_off
+                : Icons.cloud_done,
+          ),
+          const SizedBox(
+            width: 8,
+          ),
+          Expanded(
+            child: Text(text),
+          ),
+          if (_pendingCount > 0)
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 5,
+              ),
+              decoration:
+                  BoxDecoration(
+                borderRadius:
+                    BorderRadius.circular(
+                  12,
+                ),
+                border:
+                    Border.all(
+                  color: Theme.of(
+                    context,
+                  )
+                      .colorScheme
+                      .outline,
+                ),
+              ),
+              child: Text(
+                'Pendientes: $_pendingCount',
+              ),
+            ),
         ],
       ),
     );
   }
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(
+    BuildContext context,
+  ) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('TaskManager'),
+        title:
+            const Text(
+          'TaskManager',
+        ),
         actions: [
           IconButton(
-            tooltip: 'Sincronizar',
-            onPressed: _syncNow,
-            icon: const Icon(Icons.sync),
+            tooltip:
+                'Sincronizar',
+            onPressed:
+                _loading
+                    ? null
+                    : _syncNow,
+            icon:
+                const Icon(
+              Icons.sync,
+            ),
           ),
           IconButton(
-            tooltip: 'Cerrar sesión',
-            onPressed: _logout,
-            icon: const Icon(Icons.logout),
+            tooltip:
+                'Cerrar sesión',
+            onPressed:
+                _logout,
+            icon:
+                const Icon(
+              Icons.logout,
+            ),
           ),
         ],
       ),
@@ -211,26 +456,74 @@ class _HomePageState extends State<HomePage> {
           _statusBanner(),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator())
+                ? const Center(
+                    child:
+                        CircularProgressIndicator(),
+                  )
                 : AsyncState<Task>(
-                    loading: false,
+                    loading:
+                        false,
                     error: null,
-                    items: _tasks,
-                    emptyWidget: const Center(child: Text('No hay tareas almacenadas.')),
-                    itemBuilder: (context, task) => TaskCard(
-                      title: task.title,
-                      description: task.description.isEmpty ? 'Sin descripción' : task.description,
-                      onEdit: _fromCache ? null : () => _saveTask(task: task),
-                      onDelete: _fromCache ? null : () => _deleteTask(task),
+                    items:
+                        _tasks,
+                    emptyWidget:
+                        const Center(
+                      child: Text(
+                        'No hay tareas almacenadas.',
+                      ),
                     ),
+                    itemBuilder:
+                        (
+                      context,
+                      task,
+                    ) {
+                      return TaskCard(
+                        title:
+                            task.title,
+                        description:
+                            task.description
+                                    .isEmpty
+                                ? 'Sin descripción'
+                                : task.description,
+                        onEdit:
+                            _fromCache
+                                ? null
+                                : () {
+                                    _saveTask(
+                                      task:
+                                          task,
+                                    );
+                                  },
+                        onDelete:
+                            _fromCache
+                                ? null
+                                : () {
+                                    _deleteTask(
+                                      task,
+                                    );
+                                  },
+                      );
+                    },
                   ),
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _saveTask(),
-        icon: const Icon(Icons.add),
-        label: const Text('Agregar tarea'),
+      floatingActionButton:
+          FloatingActionButton
+              .extended(
+        onPressed: _loading
+            ? null
+            : () {
+                _saveTask();
+              },
+        icon:
+            const Icon(
+          Icons.add,
+        ),
+        label:
+            const Text(
+          'Agregar tarea',
+        ),
       ),
     );
   }

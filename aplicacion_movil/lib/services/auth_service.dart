@@ -5,13 +5,12 @@ import 'secure_storage_service.dart';
 
 class AuthService {
   static const String baseUrl =
-      'http://localhost:3000/api';
+      'http://10.0.2.2:3000/api';
 
   Future<String> login({
     required String correo,
     required String password,
   }) async {
-
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: {
@@ -28,7 +27,6 @@ class AuthService {
     if (response.statusCode == 200) {
       final token = data['token'];
 
-      // Guardar JWT en almacenamiento seguro
       await SecureStorageService.saveToken(token);
 
       return token;
