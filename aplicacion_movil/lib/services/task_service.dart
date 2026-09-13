@@ -1,11 +1,9 @@
-import 'dart:convert';
-
-import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
+import '../core/network/api_client.dart';
 import '../database/local_database.dart';
 import '../models/task.dart';
-import 'secure_storage_service.dart';
 import 'sync_service.dart';
 
 class TaskLoadResult {
@@ -21,36 +19,32 @@ class TaskLoadResult {
 }
 
 class TaskService {
-  static const String baseUrl = 'http://10.0.2.2:3000/api';
   const TaskService();
 
-  Future<Map<String, String>> _getHeaders() async {
-    final token = await SecureStorageService.getToken();
-    if (token == null || token.isEmpty) {
-      throw Exception('No existe una sesión activa');
-    }
-    return {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer $token',
-    };
-  }
+  // Compatibilidad temporal con SyncService.
+  // Después también migraremos SyncService a ApiClient.dio.
+  static String get baseUrl => ApiClient.dio.options.baseUrl;
 
   Future<TaskLoadResult> getTasksOfflineFirst() async {
     final db = LocalDatabase.instance;
+
     try {
       await SyncService.instance.processPendingQueue();
-      final headers = await _getHeaders();
-      final response = await http
-          .get(Uri.parse('$baseUrl/tareas'), headers: headers)
-          .timeout(const Duration(seconds: 8));
 
-      if (response.statusCode != 200) throw Exception(_errorMessage(response));
-      final data = jsonDecode(response.body);
+      final response = await ApiClient.dio.get('/tareas');
+
+      final data = Map<String, dynamic>.from(response.data);
+
       final List<dynamic> raw = data['tareas'] ?? [];
-      final tasks = raw.map((e) => Task.fromJson(e as Map<String, dynamic>)).toList();
 
-      // Conflictos: "server wins". La copia del servidor sustituye el cache local.
+      final tasks = raw
+          .map((e) => Task.fromJson(Map<String, dynamic>.from(e)))
+          .toList();
+
+      // Conflictos: "server wins".
+      // La copia del servidor sustituye el caché local.
       await db.replaceTasksFromServer(tasks);
+
       return TaskLoadResult(
         tasks: tasks,
         fromCache: false,
@@ -58,6 +52,7 @@ class TaskService {
       );
     } catch (_) {
       final cached = await db.getCachedTasks();
+
       return TaskLoadResult(
         tasks: cached,
         fromCache: true,
@@ -71,30 +66,30 @@ class TaskService {
     required String description,
   }) async {
     final clientOperationId = const Uuid().v4();
+
     try {
-      final headers = await _getHeaders();
-      final response = await http
-          .post(
-            Uri.parse('$baseUrl/tareas'),
-            headers: headers,
-            body: jsonEncode({
-              'titulo': title,
-              'descripcion': description,
-              'client_operation_id': clientOperationId,
-            }),
-          )
-          .timeout(const Duration(seconds: 8));
-      if (response.statusCode != 201 && response.statusCode != 200) {
-        throw Exception(_errorMessage(response));
-      }
-      return true;
-    } catch (_) {
-      await LocalDatabase.instance.addPendingCreate(
-        clientOperationId: clientOperationId,
-        title: title,
-        description: description,
+      await ApiClient.dio.post(
+        '/tareas',
+        data: {
+          'titulo': title,
+          'descripcion': description,
+          'client_operation_id': clientOperationId,
+        },
       );
-      return false;
+
+      return true;
+    } on DioException catch (e) {
+      if (_isNetworkError(e)) {
+        await LocalDatabase.instance.addPendingCreate(
+          clientOperationId: clientOperationId,
+          title: title,
+          description: description,
+        );
+
+        return false;
+      }
+
+      throw Exception(_errorMessage(e));
     }
   }
 
@@ -104,27 +99,49 @@ class TaskService {
     required String description,
     String status = 'Pendiente',
   }) async {
-    final headers = await _getHeaders();
-    final response = await http.put(
-      Uri.parse('$baseUrl/tareas/$id'),
-      headers: headers,
-      body: jsonEncode({'titulo': title, 'descripcion': description, 'estado': status}),
-    );
-    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    try {
+      await ApiClient.dio.put(
+        '/tareas/$id',
+        data: {'titulo': title, 'descripcion': description, 'estado': status},
+      );
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e));
+    }
   }
 
   Future<void> deleteTask(int id) async {
-    final headers = await _getHeaders();
-    final response = await http.delete(Uri.parse('$baseUrl/tareas/$id'), headers: headers);
-    if (response.statusCode != 200) throw Exception(_errorMessage(response));
+    try {
+      await ApiClient.dio.delete('/tareas/$id');
+    } on DioException catch (e) {
+      throw Exception(_errorMessage(e));
+    }
   }
 
-  String _errorMessage(http.Response response) {
-    try {
-      final data = jsonDecode(response.body);
-      return data['mensaje']?.toString() ?? 'Error en la solicitud (${response.statusCode})';
-    } catch (_) {
-      return 'Error en la solicitud (${response.statusCode})';
+  bool _isNetworkError(DioException e) {
+    return e.type == DioExceptionType.connectionError ||
+        e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.sendTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.unknown;
+  }
+
+  String _errorMessage(DioException e) {
+    final data = e.response?.data;
+
+    if (data is Map<String, dynamic>) {
+      return data['mensaje']?.toString() ??
+          'Error en la solicitud (${e.response?.statusCode})';
     }
+
+    if (data is Map) {
+      return data['mensaje']?.toString() ??
+          'Error en la solicitud (${e.response?.statusCode})';
+    }
+
+    if (_isNetworkError(e)) {
+      return 'No se pudo conectar con el servidor';
+    }
+
+    return 'Error en la solicitud (${e.response?.statusCode ?? 'desconocido'})';
   }
 }

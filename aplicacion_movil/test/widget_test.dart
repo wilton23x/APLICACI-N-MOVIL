@@ -1,7 +1,7 @@
-import 'package:flutter_test/flutter_test.dart';
+﻿import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('Prueba b�sica del proyecto', () {
+  test('Prueba básica del proyecto', () {
     expect(1 + 1, 2);
   });
 }

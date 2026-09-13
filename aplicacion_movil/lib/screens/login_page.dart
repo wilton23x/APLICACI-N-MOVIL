@@ -40,16 +40,15 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      final token = await _authService.login(
+      await _authService.login(
         correo: _correoController.text.trim(),
         password: _passwordController.text,
       );
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const HomePage()),
-      );
+      Navigator.of(context)
+          .pushReplacement(MaterialPageRoute(builder: (_) => const HomePage()));
     } catch (error) {
       if (!mounted) return;
 
