@@ -1,0 +1,10 @@
+.env
+node_modules/
+*.log
+.DS_Store
+
+aplicacion_movil/.dart_tool/
+aplicacion_movil/build/
+aplicacion_movil/.idea/
+aplicacion_movil/.flutter-plugins
+aplicacion_movil/.flutter-plugins-dependencies

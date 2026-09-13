@@ -90,27 +90,79 @@ exports.login = async (req, res) => {
             }
 
 
-            const token = jwt.sign(
+           const accessToken = jwt.sign(
+    {
+        id: usuario.id,
+        correo: usuario.correo,
+        rol: usuario.rol
+    },
+    process.env.JWT_SECRET,
+    {
+        expiresIn: process.env.ACCESS_TOKEN_EXPIRES || "1m"
+    }
+);
+
+
+const refreshToken = jwt.sign(
+    {
+        id: usuario.id,
+        correo: usuario.correo,
+        rol: usuario.rol
+    },
+    process.env.JWT_REFRESH_SECRET,
+    {
+        expiresIn: "7d"
+    }
+);
+
+
+res.json({
+    mensaje: "Inicio de sesión correcto",
+    access_token: accessToken,
+    refresh_token: refreshToken
+});
+
+        }
+    );
+
+};
+// RENOVAR ACCESS TOKEN
+exports.refresh = (req, res) => {
+
+    const { refresh_token } = req.body;
+
+    if (!refresh_token) {
+        return res.status(401).json({
+            mensaje: "Refresh token requerido"
+        });
+    }
+
+    jwt.verify(
+        refresh_token,
+        process.env.JWT_REFRESH_SECRET,
+        (error, usuario) => {
+
+            if (error) {
+                return res.status(401).json({
+                    mensaje: "Refresh token inválido o expirado"
+                });
+            }
+
+            const nuevoAccessToken = jwt.sign(
                 {
                     id: usuario.id,
                     correo: usuario.correo,
                     rol: usuario.rol
                 },
-
                 process.env.JWT_SECRET,
-
                 {
-                    expiresIn: "1h"
+                    expiresIn: process.env.ACCESS_TOKEN_EXPIRES || "1m"
                 }
             );
 
-
-            res.json({
-                mensaje: "Inicio de sesión correcto",
-                token
+            return res.status(200).json({
+                access_token: nuevoAccessToken
             });
-
         }
     );
-
 };

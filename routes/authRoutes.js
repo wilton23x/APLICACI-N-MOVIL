@@ -6,4 +6,7 @@ const authController = require("../controllers/authController");
 router.post("/register", authController.register);
 router.post("/login", authController.login);
 
+// Semana 13 - Renovación automática del token
+router.post("/refresh", authController.refresh);
+
 module.exports = router;
