@@ -1,4 +1,4 @@
-import 'package:dio/dio.dart';
+﻿import 'package:dio/dio.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../core/errors/network_exception_mapper.dart';
@@ -66,6 +66,9 @@ class TaskRepository {
   Future<bool> createTask({
     required String title,
     required String description,
+    String? photoPath,
+    double? latitude,
+    double? longitude,
   }) async {
     final clientOperationId = const Uuid().v4();
 
@@ -74,6 +77,9 @@ class TaskRepository {
         title: title,
         description: description,
         clientOperationId: clientOperationId,
+        photoPath: photoPath,
+        latitude: latitude,
+        longitude: longitude,
       );
 
       return true;
@@ -83,6 +89,9 @@ class TaskRepository {
           clientOperationId: clientOperationId,
           title: title,
           description: description,
+          photoPath: photoPath,
+          latitude: latitude,
+          longitude: longitude,
         );
 
         return false;
@@ -97,6 +106,9 @@ class TaskRepository {
     required String title,
     required String description,
     String status = 'Pendiente',
+    String? photoPath,
+    double? latitude,
+    double? longitude,
   }) async {
     try {
       await remote.updateTask(
@@ -104,6 +116,9 @@ class TaskRepository {
         title: title,
         description: description,
         status: status,
+        photoPath: photoPath,
+        latitude: latitude,
+        longitude: longitude,
       );
     } on DioException catch (e) {
       throw Exception(NetworkExceptionMapper.message(e));
@@ -133,8 +148,11 @@ class TaskRepository {
   bool _isNetworkError(DioException e) {
     return e.type == DioExceptionType.connectionError ||
         e.type == DioExceptionType.connectionTimeout ||
-        e.type == DioExceptionType.sendTimeout ||
         e.type == DioExceptionType.receiveTimeout ||
-        e.type == DioExceptionType.unknown;
+        e.type == DioExceptionType.sendTimeout;
   }
 }
+
+
+
+

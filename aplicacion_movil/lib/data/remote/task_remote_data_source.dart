@@ -1,3 +1,7 @@
+import 'dart:io';
+
+import 'package:dio/dio.dart';
+
 import '../../core/network/api_client.dart';
 import '../../models/task.dart';
 
@@ -18,15 +22,33 @@ class TaskRemoteDataSource {
     required String title,
     required String description,
     required String clientOperationId,
+    String? photoPath,
+    double? latitude,
+    double? longitude,
   }) async {
-    await ApiClient.dio.post(
-      '/tareas',
-      data: {
-        'titulo': title,
-        'descripcion': description,
-        'client_operation_id': clientOperationId,
-      },
-    );
+    final formData = FormData.fromMap({
+      'titulo': title,
+      'descripcion': description,
+      'client_operation_id': clientOperationId,
+      'latitud': ?latitude,
+      'longitud': ?longitude,
+    });
+
+    if (photoPath != null &&
+        photoPath.isNotEmpty &&
+        await File(photoPath).exists()) {
+      formData.files.add(
+        MapEntry(
+          'foto',
+          await MultipartFile.fromFile(
+            photoPath,
+            filename: photoPath.split(RegExp(r'[/\\]')).last,
+          ),
+        ),
+      );
+    }
+
+    await ApiClient.dio.post('/tareas', data: formData);
   }
 
   Future<void> updateTask({
@@ -34,11 +56,33 @@ class TaskRemoteDataSource {
     required String title,
     required String description,
     required String status,
+    String? photoPath,
+    double? latitude,
+    double? longitude,
   }) async {
-    await ApiClient.dio.put(
-      '/tareas/$id',
-      data: {'titulo': title, 'descripcion': description, 'estado': status},
-    );
+    final formData = FormData.fromMap({
+      'titulo': title,
+      'descripcion': description,
+      'estado': status,
+      'latitud': ?latitude,
+      'longitud': ?longitude,
+    });
+
+    if (photoPath != null &&
+        photoPath.isNotEmpty &&
+        await File(photoPath).exists()) {
+      formData.files.add(
+        MapEntry(
+          'foto',
+          await MultipartFile.fromFile(
+            photoPath,
+            filename: photoPath.split(RegExp(r'[/\\]')).last,
+          ),
+        ),
+      );
+    }
+
+    await ApiClient.dio.put('/tareas/$id', data: formData);
   }
 
   Future<void> deleteTask(int id) async {
