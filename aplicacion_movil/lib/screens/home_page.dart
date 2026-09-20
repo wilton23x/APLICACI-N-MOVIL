@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 
 import '../data/repositories/task_repository.dart';
 import '../models/task.dart';
 import '../services/secure_storage_service.dart';
+import '../services/native_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/async_state.dart';
 import '../widgets/task_card.dart';
@@ -17,6 +18,11 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   final TaskRepository _taskRepository = TaskRepository();
+  final NativeService _nativeService = NativeService.instance;
+
+  String? _photoPath;
+  double? _latitude;
+  double? _longitude;
 
   List<Task> _tasks = [];
 
@@ -191,9 +197,18 @@ class _HomePageState extends State<HomePage> {
         final sent = await _taskRepository.createTask(
           title: cleanTitle,
           description: cleanDescription,
+          photoPath: _photoPath,
+          latitude: _latitude,
+          longitude: _longitude,
         );
 
         if (!mounted) return;
+
+        setState(() {
+          _photoPath = null;
+          _latitude = null;
+          _longitude = null;
+        });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -216,6 +231,137 @@ class _HomePageState extends State<HomePage> {
         SnackBar(content: Text(e.toString().replaceFirst('Exception: ', ''))),
       );
     }
+  }
+
+  Future<bool> _showPermissionExplanation({
+    required String title,
+    required String message,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Continuar'),
+          ),
+        ],
+      ),
+    );
+    return result ?? false;
+  }
+
+  Future<void> _takePhoto() async {
+    final proceed = await _showPermissionExplanation(
+      title: 'Acceso a la cámara',
+      message: 'TaskManager necesita usar la cámara para tomar una fotografía relacionada con tus tareas.',
+    );
+    if (!proceed || !mounted) return;
+
+    final result = await _nativeService.takePhoto();
+    if (!mounted) return;
+
+    if (result.success && result.data != null) {
+      setState(() => _photoPath = result.data!.path);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Fotografía capturada correctamente')),
+      );
+    } else if (result.permanentlyDenied) {
+      await _showPermanentDenialDialog(
+        title: 'Permiso de cámara bloqueado',
+        message: 'El permiso de cámara fue denegado permanentemente. Puedes habilitarlo desde la configuración de la aplicación.',
+      );
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(result.message)));
+    }
+  }
+
+  Future<void> _getLocation() async {
+    final proceed = await _showPermissionExplanation(
+      title: 'Acceso a la ubicación',
+      message: 'TaskManager necesita tu ubicación actual para asociarla con una tarea mientras utilizas la aplicación.',
+    );
+    if (!proceed || !mounted) return;
+
+    final result = await _nativeService.getCurrentLocation();
+    if (!mounted) return;
+
+    if (result.success && result.data != null) {
+      setState(() {
+        _latitude = result.data!.latitude;
+        _longitude = result.data!.longitude;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ubicación obtenida correctamente')),
+      );
+    } else if (result.permanentlyDenied) {
+      await _showPermanentDenialDialog(
+        title: 'Permiso de ubicación bloqueado',
+        message: 'El permiso de ubicación fue denegado permanentemente. Puedes habilitarlo desde la configuración de la aplicación.',
+      );
+    } else if (result.message.toLowerCase().contains('servicio') ||
+        result.message.toLowerCase().contains('desactiv')) {
+      await _showLocationServiceDialog(result.message);
+    } else {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(result.message)));
+    }
+  }
+
+  Future<void> _showPermanentDenialDialog({
+    required String title,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _nativeService.openAppSettings();
+            },
+            child: const Text('Abrir configuración'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showLocationServiceDialog(String message) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Ubicación desactivada'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              Navigator.of(dialogContext).pop();
+              await _nativeService.openLocationSettings();
+            },
+            child: const Text('Activar ubicación'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _deleteTask(Task task) async {
@@ -335,6 +481,16 @@ class _HomePageState extends State<HomePage> {
         title: const Text('TaskManager'),
         actions: [
           IconButton(
+            tooltip: 'Tomar fotografía',
+            onPressed: _takePhoto,
+            icon: const Icon(Icons.camera_alt),
+          ),
+          IconButton(
+            tooltip: 'Obtener ubicación',
+            onPressed: _getLocation,
+            icon: const Icon(Icons.location_on),
+          ),
+          IconButton(
             tooltip: 'Sincronizar',
             onPressed: _loading ? null : _syncNow,
             icon: const Icon(Icons.sync),
@@ -349,6 +505,28 @@ class _HomePageState extends State<HomePage> {
       body: Column(
         children: [
           _statusBanner(),
+          if (_photoPath != null || (_latitude != null && _longitude != null))
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  if (_photoPath != null)
+                    const Chip(
+                      avatar: Icon(Icons.photo_camera, size: 18),
+                      label: Text('Foto capturada'),
+                    ),
+                  if (_latitude != null && _longitude != null)
+                    Chip(
+                      avatar: const Icon(Icons.location_on, size: 18),
+                      label: Text(
+                        '${_latitude!.toStringAsFixed(5)}, ${_longitude!.toStringAsFixed(5)}',
+                      ),
+                    ),
+                ],
+              ),
+            ),
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -393,3 +571,6 @@ class _HomePageState extends State<HomePage> {
     );
   }
 }
+
+
+

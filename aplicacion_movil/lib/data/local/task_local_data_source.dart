@@ -23,11 +23,17 @@ class TaskLocalDataSource {
     required String clientOperationId,
     required String title,
     required String description,
+    String? photoPath,
+    double? latitude,
+    double? longitude,
   }) async {
     await _db.addPendingCreate(
       clientOperationId: clientOperationId,
       title: title,
       description: description,
+      photoPath: photoPath,
+      latitude: latitude,
+      longitude: longitude,
     );
   }
 

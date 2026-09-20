@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:dio/dio.dart';
@@ -40,7 +41,31 @@ class SyncService {
         final payload =
             jsonDecode(op['payload'] as String) as Map<String, dynamic>;
 
-        await ApiClient.dio.post('/tareas', data: payload);
+        final photoPath = payload['foto_path']?.toString();
+
+        final formData = FormData.fromMap({
+          'titulo': payload['titulo'],
+          'descripcion': payload['descripcion'],
+          'client_operation_id': payload['client_operation_id'],
+          'latitud': ?payload['latitud'],
+          'longitud': ?payload['longitud'],
+        });
+
+        if (photoPath != null &&
+            photoPath.isNotEmpty &&
+            await File(photoPath).exists()) {
+          formData.files.add(
+            MapEntry(
+              'foto',
+              await MultipartFile.fromFile(
+                photoPath,
+                filename: photoPath.split(RegExp(r'[/\\]')).last,
+              ),
+            ),
+          );
+        }
+
+        await ApiClient.dio.post('/tareas', data: formData);
 
         await _localDb.removePending(localId);
       } on DioException catch (e) {

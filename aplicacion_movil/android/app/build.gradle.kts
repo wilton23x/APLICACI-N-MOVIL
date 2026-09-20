@@ -27,6 +27,9 @@ android {
         // flag during build.
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        ndk {
+            abiFilters += listOf("x86_64")
+        }
     }
 
     buildTypes {
@@ -47,3 +50,4 @@ kotlin {
 flutter {
     source = "../.."
 }
+
