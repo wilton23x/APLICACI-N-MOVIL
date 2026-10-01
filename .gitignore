@@ -8,3 +8,16 @@ aplicacion_movil/build/
 aplicacion_movil/.idea/
 aplicacion_movil/.flutter-plugins
 aplicacion_movil/.flutter-plugins-dependencies
+# Archivos de firma Android - NO subir a GitHub
+*.jks
+*.keystore
+**/key.properties
+
+# Archivos temporales y respaldos
+*_backup*
+*_backup.*
+*_antes_*
+*_seguro.*
+controllers/tareaController_final.js
+controllers/tareaController_pre_redis.js
+uploads/

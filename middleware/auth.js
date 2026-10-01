@@ -1,11 +1,11 @@
-const jwt = require("jsonwebtoken");
+﻿const jwt = require("jsonwebtoken");
 
 const verificarToken = (req, res, next) => {
 
     const authHeader = req.headers.authorization;
 
     if (!authHeader) {
-        return res.status(403).json({
+        return res.status(401).json({
             mensaje: "No existe token de acceso"
         });
     }
@@ -16,7 +16,7 @@ const verificarToken = (req, res, next) => {
 
         if (error) {
             return res.status(401).json({
-                mensaje: "Token inválido o expirado"
+                mensaje: "Token invÃ¡lido o expirado"
             });
         }
 

@@ -1,6 +1,26 @@
 ﻿const conexion = require("../config/database");
+const redis = require("../config/redis");
+const tareaQueue = require("../jobs/tareaQueue");
 
-exports.obtenerTareas = (req, res) => {
+exports.obtenerTareas = async (req, res) => {
+  const usuarioId = req.usuario.id;
+  const claveCache = `lista_tareas:${usuarioId}`;
+
+  // Intentar obtener las tareas desde Redis
+  try {
+    const datosCache = await redis.get(claveCache);
+
+    if (datosCache) {
+      console.log(`CACHE HIT Redis - usuario ${usuarioId}`);
+      return res.status(200).json(JSON.parse(datosCache));
+    }
+
+    console.log(`CACHE MISS Redis - usuario ${usuarioId}`);
+  } catch (error) {
+    console.error("Redis no disponible, se consultara MySQL:", error.message);
+  }
+
+  // Si no hay cache o Redis falla, consultar MySQL
   const sql = `
     SELECT
       id,
@@ -17,7 +37,7 @@ exports.obtenerTareas = (req, res) => {
     ORDER BY id DESC
   `;
 
-  conexion.query(sql, [req.usuario.id], (error, resultados) => {
+  conexion.query(sql, [usuarioId], async (error, resultados) => {
     if (error) {
       console.error("Error al obtener tareas:", error);
 
@@ -26,13 +46,28 @@ exports.obtenerTareas = (req, res) => {
       });
     }
 
-    return res.status(200).json({
+    const respuesta = {
       mensaje: "Tareas obtenidas correctamente",
       tareas: resultados,
-    });
+    };
+
+    // Guardar en Redis durante 60 segundos.
+    // Si Redis falla, la respuesta de MySQL se entrega igualmente.
+    try {
+      await redis.setEx(
+        claveCache,
+        60,
+        JSON.stringify(respuesta)
+      );
+
+      console.log(`CACHE SET Redis - usuario ${usuarioId}`);
+    } catch (error) {
+      console.error("No se pudo guardar cache Redis:", error.message);
+    }
+
+    return res.status(200).json(respuesta);
   });
 };
-
 exports.crearTarea = (req, res) => {
   console.log("SEMANA14 BODY:", req.body);
   console.log("SEMANA14 FILE:", req.file);
@@ -140,13 +175,33 @@ exports.crearTarea = (req, res) => {
         req.usuario.id,
         client_operation_id || null,
       ],
-      (error, resultado) => {
+      async (error, resultado) => {
         if (error) {
           console.error("Error al crear tarea:", error);
 
           return res.status(500).json({
             mensaje: "Error al crear la tarea",
           });
+        }
+
+        // Invalidar cache Redis del usuario
+        try {
+          await redis.del(`lista_tareas:${req.usuario.id}`);
+          console.log(`CACHE INVALIDADO - usuario ${req.usuario.id}`);
+        } catch (errorRedis) {
+          console.error("No se pudo invalidar Redis:", errorRedis.message);
+        }
+
+        // Agregar procesamiento asincrono a Bull
+        try {
+          await tareaQueue.add({
+            tareaId: resultado.insertId,
+            usuarioId: req.usuario.id,
+            mensaje: "Nueva tarea creada",
+          });
+          console.log(`COLA BULL - tarea ${resultado.insertId} agregada`);
+        } catch (errorCola) {
+          console.error("No se pudo agregar a Bull:", errorCola.message);
         }
 
         return res.status(201).json({
@@ -292,7 +347,7 @@ exports.actualizarTarea = (req, res) => {
       req.params.id,
       req.usuario.id,
     ],
-    (error, resultado) => {
+    async (error, resultado) => {
       if (error) {
         console.error("Error al actualizar tarea:", error);
 
@@ -305,6 +360,14 @@ exports.actualizarTarea = (req, res) => {
         return res.status(404).json({
           mensaje: "Tarea no encontrada",
         });
+      }
+
+      // Invalidar cache despues de actualizar
+      try {
+        await redis.del(`lista_tareas:${req.usuario.id}`);
+        console.log(`CACHE INVALIDADO ACTUALIZAR - usuario ${req.usuario.id}`);
+      } catch (errorRedis) {
+        console.error("No se pudo invalidar Redis:", errorRedis.message);
       }
 
       return res.status(200).json({
@@ -327,7 +390,7 @@ exports.eliminarTarea = (req, res) => {
   conexion.query(
     sql,
     [req.params.id, req.usuario.id],
-    (error, resultado) => {
+    async (error, resultado) => {
       if (error) {
         console.error("Error al eliminar tarea:", error);
 
@@ -342,10 +405,20 @@ exports.eliminarTarea = (req, res) => {
         });
       }
 
+      // Invalidar cache despues de eliminar
+      try {
+        await redis.del(`lista_tareas:${req.usuario.id}`);
+        console.log(`CACHE INVALIDADO ELIMINAR - usuario ${req.usuario.id}`);
+      } catch (errorRedis) {
+        console.error("No se pudo invalidar Redis:", errorRedis.message);
+      }
+
       return res.status(200).json({
         mensaje: "Tarea eliminada correctamente",
       });
     },
   );
 };
+
+
 

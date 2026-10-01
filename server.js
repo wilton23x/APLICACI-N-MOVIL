@@ -1,6 +1,9 @@
-const app = require("./app");
+﻿const app = require("./app");
 
-const PORT = 3000;
+// Iniciar worker de Bull para procesamiento asincrono
+require("./jobs/worker");
+
+const PORT = process.env.PORT || 3000;
 
 app.listen(PORT, () => {
     console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
