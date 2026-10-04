@@ -1,22 +1,23 @@
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
-import '../widgets/app_button.dart';
 import '../theme/app_theme.dart';
-import 'home_page.dart';
-import 'register_page.dart';
+import '../widgets/app_button.dart';
 
-class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+class RegisterPage extends StatefulWidget {
+  const RegisterPage({super.key});
 
   @override
-  State<LoginPage> createState() => _LoginPageState();
+  State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _LoginPageState extends State<LoginPage> {
+class _RegisterPageState extends State<RegisterPage> {
   final _formKey = GlobalKey<FormState>();
+
+  final _nombreController = TextEditingController();
   final _correoController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _confirmarPasswordController = TextEditingController();
 
   final AuthService _authService = AuthService();
 
@@ -25,12 +26,14 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _nombreController.dispose();
     _correoController.dispose();
     _passwordController.dispose();
+    _confirmarPasswordController.dispose();
     super.dispose();
   }
 
-  Future<void> _login() async {
+  Future<void> _registrar() async {
     if (!_formKey.currentState!.validate()) {
       return;
     }
@@ -41,18 +44,18 @@ class _LoginPageState extends State<LoginPage> {
     });
 
     try {
-      await _authService.login(
+      final mensaje = await _authService.register(
+        nombre: _nombreController.text.trim(),
         correo: _correoController.text.trim(),
         password: _passwordController.text,
       );
 
       if (!mounted) return;
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const HomePage(),
-        ),
-      );
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(mensaje)));
+
+      Navigator.of(context).pop();
     } catch (error) {
       if (!mounted) return;
 
@@ -68,17 +71,10 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _abrirRegistro() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => const RegisterPage(),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      appBar: AppBar(title: const Text('Crear cuenta')),
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
@@ -90,15 +86,12 @@ class _LoginPageState extends State<LoginPage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Icon(
-                      Icons.task_alt,
-                      size: 72,
-                    ),
+                    const Icon(Icons.person_add_alt_1, size: 72),
 
                     const SizedBox(height: AppSpacing.lg),
 
                     Text(
-                      'TaskManager',
+                      'Crear una cuenta',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineMedium,
                     ),
@@ -106,12 +99,35 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: AppSpacing.sm),
 
                     Text(
-                      'Inicia sesión para administrar tus tareas',
+                      'Regístrate para comenzar a administrar tus tareas',
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.bodyLarge,
                     ),
 
                     const SizedBox(height: AppSpacing.xl),
+
+                    TextFormField(
+                      controller: _nombreController,
+                      textCapitalization: TextCapitalization.words,
+                      decoration: const InputDecoration(
+                        labelText: 'Nombre',
+                        prefixIcon: Icon(Icons.person_outline),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return 'Ingresa tu nombre';
+                        }
+
+                        if (value.trim().length < 3) {
+                          return 'El nombre debe tener al menos 3 caracteres';
+                        }
+
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: AppSpacing.md),
 
                     TextFormField(
                       controller: _correoController,
@@ -126,7 +142,7 @@ class _LoginPageState extends State<LoginPage> {
                           return 'Ingresa tu correo';
                         }
 
-                        if (!value.contains('@')) {
+                        if (!value.contains('@') || !value.contains('.')) {
                           return 'Ingresa un correo válido';
                         }
 
@@ -146,7 +162,34 @@ class _LoginPageState extends State<LoginPage> {
                       ),
                       validator: (value) {
                         if (value == null || value.isEmpty) {
-                          return 'Ingresa tu contraseña';
+                          return 'Ingresa una contraseña';
+                        }
+
+                        if (value.length < 6) {
+                          return 'La contraseña debe tener al menos 6 caracteres';
+                        }
+
+                        return null;
+                      },
+                    ),
+
+                    const SizedBox(height: AppSpacing.md),
+
+                    TextFormField(
+                      controller: _confirmarPasswordController,
+                      obscureText: true,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirmar contraseña',
+                        prefixIcon: Icon(Icons.lock_reset),
+                        border: OutlineInputBorder(),
+                      ),
+                      validator: (value) {
+                        if (value == null || value.isEmpty) {
+                          return 'Confirma tu contraseña';
+                        }
+
+                        if (value != _passwordController.text) {
+                          return 'Las contraseñas no coinciden';
                         }
 
                         return null;
@@ -167,26 +210,21 @@ class _LoginPageState extends State<LoginPage> {
                     const SizedBox(height: AppSpacing.lg),
 
                     AppButton(
-                      label: 'Iniciar sesión',
-                      icon: Icons.login,
+                      label: 'Crear cuenta',
+                      icon: Icons.person_add,
                       loading: _loading,
-                      onPressed: _loading ? null : _login,
+                      onPressed: _loading ? null : _registrar,
                     ),
 
                     const SizedBox(height: AppSpacing.sm),
 
-                    TextButton.icon(
-                      onPressed: _loading ? null : _abrirRegistro,
-                      icon: const Icon(Icons.person_add_outlined),
-                      label: const Text('Crear cuenta'),
-                    ),
-
-                    const SizedBox(height: AppSpacing.sm),
-
-                    Text(
-                      '¿No tienes una cuenta? Regístrate para comenzar.',
-                      textAlign: TextAlign.center,
-                      style: Theme.of(context).textTheme.bodySmall,
+                    TextButton(
+                      onPressed: _loading
+                          ? null
+                          : () {
+                              Navigator.of(context).pop();
+                            },
+                      child: const Text('Ya tengo una cuenta'),
                     ),
                   ],
                 ),
